@@ -1,0 +1,6 @@
+{
+  "name": "CORBAN 360",
+  "description": "Sistema integrado de gestão, CRM, simulações e formalização para correspondentes bancários próprios.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
