@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { supabase } from '../../lib/supabase';
+import { logAuthEvent } from '../../services/db';
 import { ShieldCheck, Mail, KeyRound, Lock, ArrowRight, CheckCircle2, AlertCircle, X, RefreshCw } from 'lucide-react';
 import { BRAND_CONFIG } from '../../constants/brand';
 
@@ -7,15 +9,23 @@ interface ForgotPasswordModalProps {
   onClose: () => void;
   defaultEmail?: string;
   onSuccessReset: (message: string) => void;
+  /**
+   * true quando o usuário chegou pelo link do e-mail de recuperação
+   * (o Supabase já abriu uma sessão de recuperação): pede só a nova senha.
+   */
+  recoveryMode?: boolean;
 }
+
+const MIN_PASSWORD_LENGTH = 8;
 
 export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
   isOpen,
   onClose,
   defaultEmail = '',
-  onSuccessReset
+  onSuccessReset,
+  recoveryMode = false
 }) => {
-  const [step, setStep] = useState<'request' | 'reset'>('request');
+  const [step, setStep] = useState<'request' | 'reset'>(recoveryMode ? 'reset' : 'request');
   const [email, setEmail] = useState<string>(defaultEmail);
   const [token, setToken] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('');
@@ -26,37 +36,34 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (recoveryMode) setStep('reset');
+  }, [recoveryMode]);
+
   if (!isOpen) return null;
 
   const handleRequestToken = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     if (!email.trim()) {
-      setErrorMessage('Por favor, informe seu e-mail institucional credenciado.');
+      setErrorMessage('Por favor, informe seu e-mail cadastrado.');
       return;
     }
 
     setIsLoading(true);
     try {
-      const res = await fetch('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        redirectTo: window.location.origin
       });
-      const data = await res.json();
-
-      if (res.ok) {
-        setSuccessInfo(data.message);
-        if (data.devResetToken) {
-          // Pre-populate token for seamless testing environment
-          setToken(data.devResetToken);
-        }
-        setStep('reset');
-      } else {
-        setErrorMessage(data.error || 'Ocorreu um erro ao processar sua solicitação.');
+      if (error && error.status === 429) {
+        setErrorMessage('Muitas solicitações. Aguarde alguns minutos antes de tentar novamente.');
+        return;
       }
+      // Resposta genérica: não revela se o e-mail existe
+      setSuccessInfo('Se o e-mail estiver cadastrado, você receberá um link e um código de redefinição. Use o link ou digite o código abaixo.');
+      setStep('reset');
     } catch {
-      setErrorMessage('Falha na comunicação com o servidor de segurança.');
+      setErrorMessage('Falha na comunicação com o servidor de autenticação.');
     } finally {
       setIsLoading(false);
     }
@@ -66,13 +73,13 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!token.trim()) {
-      setErrorMessage('Informe o código ou token de redefinição.');
+    if (!recoveryMode && !token.trim()) {
+      setErrorMessage('Informe o código recebido por e-mail.');
       return;
     }
 
-    if (newPassword.length < 6) {
-      setErrorMessage('A nova senha deve ter no mínimo 6 caracteres.');
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setErrorMessage(`A nova senha deve ter no mínimo ${MIN_PASSWORD_LENGTH} caracteres.`);
       return;
     }
 
@@ -83,19 +90,28 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
 
     setIsLoading(true);
     try {
-      const res = await fetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, newPassword })
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        onSuccessReset(data.message || 'Senha redefinida com sucesso!');
-        onClose();
-      } else {
-        setErrorMessage(data.error || 'Falha ao redefinir a senha.');
+      if (!recoveryMode) {
+        const { error: otpError } = await supabase.auth.verifyOtp({
+          email: email.trim().toLowerCase(),
+          token: token.trim(),
+          type: 'recovery'
+        });
+        if (otpError) {
+          setErrorMessage('Código inválido ou expirado. Solicite uma nova recuperação.');
+          return;
+        }
       }
+
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        setErrorMessage(error.message || 'Falha ao redefinir a senha.');
+        return;
+      }
+
+      await logAuthEvent('auth.password_reset_completed');
+      await supabase.auth.signOut();
+      onSuccessReset('Senha alterada com sucesso! Faça login com a nova senha.');
+      onClose();
     } catch {
       setErrorMessage('Erro de conexão ao salvar a nova senha.');
     } finally {
@@ -107,8 +123,8 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
   const getPasswordStrength = (pass: string) => {
     if (!pass) return 0;
     let score = 0;
-    if (pass.length >= 6) score += 25;
     if (pass.length >= 8) score += 25;
+    if (pass.length >= 12) score += 25;
     if (/[A-Z]/.test(pass)) score += 25;
     if (/[0-9!@#$%^&*]/.test(pass)) score += 25;
     return score;
@@ -175,7 +191,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="ex: tomsilvaconsignado@gmail.com"
+                    placeholder="seu.email@empresa.com.br"
                     className="w-full pl-10 pr-3 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all font-mono"
                   />
                 </div>
@@ -217,22 +233,26 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                 </div>
               )}
 
+              {!recoveryMode && (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Token / Código de Redefinição
+                  Código de Redefinição
                 </label>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
                   required
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
-                  placeholder="Cole aqui o token recebido"
+                  placeholder="Código recebido por e-mail"
                   className="w-full px-3.5 py-2 text-xs font-mono bg-slate-50 border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all"
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block">
-                  Token emitido pelo ambiente seguro com validade de 60 minutos.
+                  Se preferir, clique no link do e-mail: ele abre o sistema direto nesta etapa.
                 </span>
               </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -245,7 +265,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Mínimo de 6 caracteres"
+                    placeholder="Mínimo de 8 caracteres"
                     className="w-full pl-10 pr-10 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all"
                   />
                   <button
@@ -301,13 +321,15 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
               </div>
 
               <div className="pt-2 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setStep('request')}
-                  className="text-xs text-slate-500 hover:text-slate-800 underline"
-                >
-                  Voltar ao e-mail
-                </button>
+                {!recoveryMode ? (
+                  <button
+                    type="button"
+                    onClick={() => setStep('request')}
+                    className="text-xs text-slate-500 hover:text-slate-800 underline"
+                  >
+                    Voltar ao e-mail
+                  </button>
+                ) : <span />}
                 <div className="flex gap-2">
                   <button
                     type="button"

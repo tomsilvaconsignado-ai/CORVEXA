@@ -254,7 +254,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             <div className="space-y-3">
               {Object.entries(productDistribution).map(([name, count]) => {
-                const pct = Math.round((count / proposals.length) * 100);
+                const pct = Math.round((Number(count) / Math.max(1, proposals.length)) * 100);
                 return (
                   <div key={name}>
                     <div className="flex justify-between text-xs mb-1">

@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { BRAND_CONFIG } from '../../constants/brand';
 import { CustomerRegistrationForm } from './CustomerRegistrationForm';
+import { listInteractions } from '../../services/db';
 
 interface CrmViewProps {
   customers: Customer[];
@@ -114,13 +115,9 @@ export const CrmView: React.FC<CrmViewProps> = ({
     setSelectedCustomerId(cust.id);
     setViewMode('detail');
     try {
-      const res = await fetch(`/api/customers/${cust.id}/interactions`);
-      if (res.ok) {
-        const data = await res.json();
-        setCustomerInteractions(data);
-      }
+      setCustomerInteractions(await listInteractions(cust.id));
     } catch {
-      // fallback
+      setCustomerInteractions([]);
     }
   };
 
@@ -204,10 +201,10 @@ export const CrmView: React.FC<CrmViewProps> = ({
       result: interactionResult
     });
 
-    const res = await fetch(`/api/customers/${selectedCustomer.id}/interactions`);
-    if (res.ok) {
-      const data = await res.json();
-      setCustomerInteractions(data);
+    try {
+      setCustomerInteractions(await listInteractions(selectedCustomer.id));
+    } catch {
+      /* mantém a lista atual */
     }
 
     setIsInteractionModalOpen(false);

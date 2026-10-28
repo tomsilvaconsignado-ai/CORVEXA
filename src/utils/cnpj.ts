@@ -89,21 +89,10 @@ export async function fetchCompanyByCnpj(cnpj: string): Promise<{
   }
 
   try {
-    // Primeiro tenta via endpoint do backend proxy CORVEXA (para segurança e evitar CORS)
-    // Se o backend não responder, faz fetch direto na BrasilAPI pública
-    let response: Response | null = null;
+    // Consulta direta à BrasilAPI pública (suporta CORS)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    try {
-      response = await fetch(`/api/integrations/cnpj/${clean}`, { signal: controller.signal });
-    } catch {
-      // Fallback direto
-    }
-
-    if (!response || !response.ok) {
-      response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${clean}`, { signal: controller.signal });
-    }
+    const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${clean}`, { signal: controller.signal });
     clearTimeout(timeoutId);
 
     if (response.status === 404) {

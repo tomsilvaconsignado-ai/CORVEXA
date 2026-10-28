@@ -17,114 +17,111 @@ Plataforma inteligente de tecnologia e gestão corporativa para correspondentes 
   5. Crédito Pessoal
   6. Portabilidade de Crédito
   7. Refinanciamento (Refin)
-  - Cálculo exato pela Tabela Price, alíquotas de IOF, CET mensal e anual, e comparativo de bancos parceiros (Banrisul, Caixa, Santander, PAN, Itaú, BMG).
+  - Simulação indicativa pela Tabela Price, IOF pessoa física (0,38% + 0,0082% ao dia, até 365 dias), CET mensal e anual pela taxa interna de retorno e comparativo de bancos parceiros (Banrisul, Caixa, Santander, PAN, Itaú, BMG).
 - **Funil Comercial em 17 Etapas**: Pipeline completo de vendas com visualização em lista detalhada e Kanban agrupado, transição auditada de fases com justificativa obrigatória e alertas de propostas estagnadas.
 - **Esteira de Documentos & Formalização**: Checklist documental configurável por produto (RG/CNH, Comprovante de Residência, Extrato INSS / Holerite, CCB / Termo de Adesão e Selfie com Biometria) com aprovação e reprovação justificada.
 - **Módulo Financeiro & Comissões**: Controle de comissões previstas, confirmadas pelo parceiro e recebidas em conta, repasse aos operadores e conciliação bancária por contrato.
-- **Central de Integrações e APIs Bancárias**: Conectores documentados para Banrisul BPI, Dataprev, Serpro, Banco PAN e Open Finance, com controle explícito de status real (`Ativo`, `Pendente de Homologação`, `Em Manutenção`).
-- **Controle de Acesso RBAC**: Perfis de Administrador Master, Gerente Comercial, Operador, Financeiro e Auditor / Compliance com alternador de sessão integrado para testes de permissão.
-- **Trilha de Auditoria & LGPD**: Registro imutável de todas as ações de usuários, alterações de status e acessos a dados sensíveis.
+- **Central de Integrações e APIs Bancárias**: Conectores documentados para Banrisul BPI, Dataprev, Serpro, Banco PAN e Open Finance. Todos começam como `Pendente de Homologação` até existir integração real.
+- **Controle de Acesso RBAC**: Perfis de Administrador Master, Gerente Comercial, Operador, Financeiro e Auditor / Compliance, com permissões aplicadas no banco (Row Level Security), não apenas no menu.
+- **Trilha de Auditoria & LGPD**: Registros gravados pelo próprio b## 2. Arquitetura
+
+```
+Navegador (React + Vite, hospedado na Vercel)
+   │  supabase-js com a chave pública "anon"
+   ▼
+Supabase
+   ├─ Auth ............ login, sessão, recuperação de senha
+   ├─ Postgres + RLS .. isolamento por organização e permissões por perfil
+   └─ Triggers ........ nº da proposta, comissão prevista, auditoria
+```
+
+Não há servidor Node próprio. Regras sensíveis ficam no banco
+(`supabase/migrations/`), então não podem ser burladas pelo navegador.
+O modelo conceitual completo de 34 entidades continua em `supabase/reference/`.
+
+| Perfil | Clientes | Propostas | Comissões | Conectores | Auditoria |
+|---|---|---|---|---|---|
+| admin_master | ver / criar / editar / excluir | ver / editar todas | ver / editar | ver / editar | ver |
+| gerente | ver / criar / editar | ver / editar todas | ver | ver / editar | — |
+| operador | ver / criar / editar | ver todas, editar as suas | só as suas | ver | — |
+| financeiro | ver | ver | ver / editar | ver | — |
+| auditor | ver | ver | ver | ver | ver |
 
 ---
 
-## 2. Pré-requisitos
+## 3. Configurar o Supabase (uma vez)
 
-- **Node.js**: Versão 20.x ou superior.
-- **NPM**: Versão 10.x ou superior.
-- **PostgreSQL / Supabase** (Opcional para persistência em nuvem; o sistema já inclui banco de dados transacional em disco).
+1. Crie um projeto em [supabase.com](https://supabase.com).
+2. **SQL Editor** → cole e execute `supabase/migrations/20261028120000_corvexa_app.sql`.
+3. **Authentication → Sign In / Providers → Email**: desative **"Allow new users to sign up"**
+   (os usuários são criados pelo admin). Mesmo que fique ativo, contas novas entram
+   **inativas** e sem acesso a dados.
+4. **Authentication → URL Configuration**: em *Site URL* coloque o endereço do site na Vercel
+   (e `http://localhost:5173` para desenvolvimento em *Redirect URLs*).
+5. (Opcional) **Authentication → Email Templates → Reset Password**: inclua `{{ .Token }}`
+   no texto para o usuário poder digitar o código na tela, além do link.
+6. Crie o primeiro usuário em **Authentication → Users → Add user** e ative-o como admin
+   no SQL Editor:
+
+```sql
+update public.profiles
+set organization_id = '00000000-0000-0000-0000-000000000001',
+    role = 'admin_master',
+    active = true,
+    full_name = 'Seu Nome'
+where email = 'seu.email@empresa.com.br';
+```
+
+Para cada novo colaborador: crie o usuário no painel e rode o mesmo `update` com o
+perfil adequado (`gerente`, `operador`, `financeiro` ou `auditor`). Para bloquear alguém,
+`update public.profiles set active = false where email = '...';`.
 
 ---
 
-## 3. Instalação e Execução Local
+## 4. Rodar localmente
+
+Requisitos: Node.js 20+.
 
 ```bash
-# 1. Instalar as dependências do projeto
 npm install
-
-# 2. Iniciar o ambiente de desenvolvimento full-stack (Express + Vite)
-npm run dev
+cp .env.example .env.local   # preencha VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY
+npm run dev                  # http://localhost:5173
 ```
 
-O servidor estará disponível em: `http://localhost:3000`.
-
----
-
-## 4. Configuração das Variáveis de Ambiente
-
-Copie o arquivo `.env.example` para `.env`:
+Outros comandos:
 
 ```bash
-cp .env.example .env
+npm test        # testes de CPF, CNPJ, CEP, Tabela Price, IOF, CET e simulação
+npm run lint    # checagem de tipos (tsc)
+npm run build   # build de produção em dist/
 ```
 
-Parâmetros disponíveis:
-- `PORT`: Porta de execução do servidor Express (padrão: `3000`).
-- `NODE_ENV`: Ambiente (`development` ou `production`).
-- `SUPABASE_URL`: URL da sua instância Supabase (ex: `https://xyzcompany.supabase.co`).
-- `SUPABASE_ANON_KEY`: Chave anônima pública do Supabase.
-- `SUPABASE_SERVICE_ROLE_KEY`: Chave privada administrativa para backend.
-- `BANRISUL_CLIENT_ID` e `BANRISUL_CLIENT_SECRET`: Credenciais para APIs BPI do Banrisul.
-- `BANRISUL_CERT_PATH`: Caminho do certificado mTLS ICP-Brasil.
-- `DATAPREV_CERT_PATH`: Certificado e-CNPJ para consultas reguladas da Dataprev.
+> Nunca coloque a `service_role` key em variáveis `VITE_*`: elas vão para o JavaScript público.
 
 ---
 
-## 5. Migrações e Banco de Dados Supabase (34 Entidades)
+## 5. Publicar na Vercel
 
-A plataforma **CORVEXA** fornece scripts SQL completos com 34 entidades relacionais normalizadas, chaves estrangeiras, índices e políticas de Row Level Security (RLS).
+1. Na Vercel: **Add New → Project** → importe o repositório `CORVEXA`.
+2. Framework: **Vite** (já definido no `vercel.json`).
+3. **Environment Variables**: `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`.
+4. Deploy. Cada pull request ganha um link de preview automático.
+5. Volte ao Supabase e coloque a URL da Vercel em *Site URL* (passo 3.4).
 
-Arquivos de migração localizados em `/supabase/migrations/`:
-1. `20261028_001_initial_schema.sql`: Definição de tabelas (`organizations`, `branches`, `profiles`, `customers`, `proposals`, `simulations`, `commissions`, etc.), constraints e índices.
-2. `20261028_002_rls_and_seed.sql`: Ativação do RLS, políticas de isolamento multi-empresa e dados semente de perfis, produtos e bancos parceiros.
-
-### Como aplicar no Supabase:
-1. Acesse o **SQL Editor** no painel do Supabase.
-2. Cole ou execute o arquivo `20261028_001_initial_schema.sql`.
-3. Em seguida, execute `20261028_002_rls_and_seed.sql`.
-4. Os scripts também podem ser baixados diretamente pela interface do sistema no menu **Esquema SQL Supabase**.
+O GitHub Pages deixa de ser usado; pode ser desativado em *Settings → Pages*.
 
 ---
 
-## 6. Testes Automatizados e Validação
+## 6. Integrações futuras com parceiros
 
-O sistema possui testes unitários e de integração para validação de regras de negócio essenciais:
-- Validação de CPF pelo algoritmo oficial Módulo 11.
-- Cálculo de parcelas pela Tabela Price e Custo Efetivo Total (CET).
-- Prevenção de duplicidade de clientes e integridade de propostas.
+Consultas que exigem credencial (SERPRO, Dataprev, Banrisul BPI, Open Finance) **não podem**
+rodar no navegador. O caminho é uma **Supabase Edge Function** guardando o segredo
+(`supabase secrets set ...`) e chamada pelo app autenticado.
 
-Para executar a verificação estática de tipos e integridade:
-```bash
-npm run lint
-```
+1. **Banrisul BPI**: catálogo em `https://developers.banrisul.com.br/bpi/link/catalogo-apis.html`; requer credenciamento de correspondente e certificado mTLS.
+2. **Dataprev**: canal oficial para consulta autorizada de margem consignável INSS.
+3. **Serpro**: API de Consulta CPF via `https://servicos.serpro.gov.br/api-serpro/`.
+4. **Open Finance Brasil**: certificação e registro no diretório central.
 
-Para validar a compilação completa do build de produção:
-```bash
-npm run build
-```
-
----
-
-## 7. Build e Publicação em Produção
-
-```bash
-# 1. Gerar o build otimizado do frontend
-npm run build
-
-# 2. Iniciar o servidor em produção
-npm run start
-```
-
----
-
-## 8. Integração Futura com Parceiros Bancários
-
-1. **Banrisul BPI (Banrisul Partner Integration)**:
-   - Consultar catálogo oficial: `https://developers.banrisul.com.br/bpi/link/catalogo-apis.html`
-   - Obter credenciamento de correspondente junto ao Banrisul.
-   - Instalar o certificado mTLS no servidor backend seguro.
-2. **Dataprev**:
-   - Requisição de canal oficial para consulta autorizada de margem consignável INSS.
-3. **Serpro**:
-   - Integração com a API de Consulta CPF e Validação Facial via `https://servicos.serpro.gov.br/api-serpro/`.
-4. **Open Finance Brasil**:
-   - Certificação de software e credenciamento no diretório central Open Finance.
+As taxas do simulador são referências internas: confirme as tabelas vigentes de cada
+parceiro e os tetos legais (ex.: teto do consignado INSS definido pelo CNPS).

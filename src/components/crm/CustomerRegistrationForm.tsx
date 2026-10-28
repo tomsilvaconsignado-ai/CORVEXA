@@ -35,6 +35,7 @@ import {
   Info
 } from 'lucide-react';
 import { BRAND_CONFIG } from '../../constants/brand';
+import { findCustomerByCpf } from '../../services/db';
 
 interface CustomerRegistrationFormProps {
   initialCustomer?: Customer | null;
@@ -276,29 +277,22 @@ export const CustomerRegistrationForm: React.FC<CustomerRegistrationFormProps> =
     setCpfFeedback(null);
 
     try {
-      const res = await fetch(`/api/integrations/cpf/${clean}`);
-      const data = await res.json();
+      // 1. Verifica duplicidade na base da organização (Supabase, protegido por RLS)
+      // 2. Consulta cadastral oficial (SERPRO/Dataprev) exige conector homologado no
+      //    servidor (ex.: Supabase Edge Function com a credencial) — não é feita no navegador.
+      const existing = await findCustomerByCpf(clean);
       setCpfLoading(false);
 
-      if (data.existsInDb && data.customer) {
+      if (existing) {
         setCpfFeedback({
           type: 'info',
-          text: `Cliente já cadastrado na base CORVEXA: ${data.customer.fullName}. Deseja carregar os dados cadastrais?`,
-          existingCustomer: data.customer
-        });
-      } else if (data.source === 'serpro_receita') {
-        // Se serviço SERPRO oficial retornar dados legítimos
-        if (data.data?.nome) setFullName(data.data.nome);
-        if (data.data?.data_nascimento) setBirthDate(data.data.data_nascimento);
-        setCpfFeedback({
-          type: 'success',
-          text: `Dados cadastrais autenticados com sucesso via SERPRO: ${data.data.nome}.`
+          text: `Cliente já cadastrado na base CORVEXA: ${existing.fullName}. Deseja carregar os dados cadastrais?`,
+          existingCustomer: existing
         });
       } else {
-        // Resposta transparente e ética conforme as diretrizes do prompt
         setCpfFeedback({
           type: 'info',
-          text: data.message || 'CPF matematicamente autêntico. Consulta cadastral em bureau oficial depende de conector homologado ativo. Prossiga com o preenchimento manual.'
+          text: 'CPF válido pelo cálculo dos dígitos verificadores (Módulo 11). Isso não é uma consulta à Receita: a consulta cadastral depende de conector homologado (SERPRO/Dataprev). Prossiga com o preenchimento manual.'
         });
       }
     } catch {
