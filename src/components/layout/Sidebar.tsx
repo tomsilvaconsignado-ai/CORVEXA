@@ -29,6 +29,9 @@ interface SidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onLogout?: () => void;
+  /** Gaveta aberta no celular (< md) */
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 interface NavCategory {
@@ -49,8 +52,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   userRole,
   isCollapsed,
   onToggleCollapse,
-  onLogout
+  onLogout,
+  isMobileOpen = false,
+  onCloseMobile
 }) => {
+  // No celular a gaveta sempre abre expandida
+  const collapsed = isCollapsed && !isMobileOpen;
+  const selectTab = (tab: string) => {
+    onSelectTab(tab);
+    onCloseMobile?.();
+  };
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
     'operacional': true,
     'produtos': true,
@@ -116,20 +127,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: ShieldCheck,
       items: [
         { id: 'audit', label: 'Auditoria & LGPD', icon: ShieldCheck, roles: ['admin_master', 'auditor'] },
-        { id: 'export_sql', label: 'Esquema SQL (34 Tabelas)', icon: Database, roles: ['admin_master', 'gerente', 'operador', 'financeiro', 'auditor'] },
+        { id: 'export_sql', label: 'Esquema SQL Supabase', icon: Database, roles: ['admin_master', 'gerente', 'operador', 'financeiro', 'auditor'] },
       ]
     }
   ];
 
   return (
+    <>
+    {/* Fundo escurecido da gaveta no celular */}
+    {isMobileOpen && (
+      <div
+        className="fixed inset-0 z-40 bg-slate-950/60 md:hidden"
+        onClick={onCloseMobile}
+        aria-hidden="true"
+      />
+    )}
     <aside 
-      className={`${
-        isCollapsed ? 'w-16' : 'w-64'
-      } bg-[#051026] text-slate-300 flex flex-col shrink-0 min-h-screen select-none border-r border-slate-800 transition-all duration-200 relative`}
+      className={`fixed inset-y-0 left-0 z-50 w-64 overflow-y-auto transform ${
+        isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+      } md:static md:z-auto md:translate-x-0 md:overflow-visible ${
+        collapsed ? 'md:w-16' : 'md:w-64'
+      } bg-[#051026] text-slate-300 flex flex-col shrink-0 min-h-screen select-none border-r border-slate-800 transition-all duration-200`}
     >
       {/* Top Brand Box with Official Logo */}
       <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800/80 bg-[#030917]">
-        {!isCollapsed ? (
+        {!collapsed ? (
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="bg-white rounded-lg p-1 px-1.5 shadow-sm shrink-0 flex items-center justify-center">
               <img
@@ -160,14 +182,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           onClick={onToggleCollapse}
           className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition-colors hidden md:block"
-          title={isCollapsed ? "Expandir menu" : "Recolher menu"}
+          title={collapsed ? "Expandir menu" : "Recolher menu"}
         >
-          {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>
       </div>
 
       {/* Promotora Card (Inspired by the Reference screenshot) */}
-      {!isCollapsed && (
+      {!collapsed && (
         <div className="p-3 bg-gradient-to-r from-slate-900 to-[#0A1A36] border-b border-slate-800/60 m-3 rounded-xl border flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center text-cyan-400 shrink-0 border border-white/10">
             <Building className="w-5 h-5 text-cyan-400" />
@@ -194,7 +216,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           return (
             <div key={cat.key} className="mb-1">
-              {!isCollapsed ? (
+              {!collapsed ? (
                 <>
                   <button
                     onClick={() => toggleCategory(cat.key)}
@@ -221,7 +243,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         return (
                           <button
                             key={item.id}
-                            onClick={() => onSelectTab(item.id)}
+                            onClick={() => selectTab(item.id)}
                             disabled={!isAllowed}
                             className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all text-left ${
                               isActive
@@ -253,7 +275,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     return (
                       <button
                         key={item.id}
-                        onClick={() => onSelectTab(item.id)}
+                        onClick={() => selectTab(item.id)}
                         disabled={!isAllowed}
                         className={`w-full flex justify-center p-2 rounded-lg text-xs transition-all ${
                           isActive
@@ -274,7 +296,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       {/* Support / Help Action & Logout */}
-      {!isCollapsed ? (
+      {!collapsed ? (
         <div className="p-3 border-t border-slate-800/80 bg-[#030917] space-y-2">
           <a
             href="https://wa.me/5551987654321?text=Suporte%20CORVEXA"
@@ -315,5 +337,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       )}
     </aside>
+    </>
   );
 };

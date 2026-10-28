@@ -18,8 +18,6 @@ interface HeaderProps {
   currentUser: UserProfile;
   organizationName: string;
   activeTab: string;
-  allUsers: UserProfile[];
-  onSwitchUser: (userId: string) => void;
   onRefreshData: () => void;
   isLoading: boolean;
   onToggleMobileMenu?: () => void;
@@ -31,8 +29,6 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   organizationName,
   activeTab,
-  allUsers,
-  onSwitchUser,
   onRefreshData,
   isLoading,
   onToggleMobileMenu,
@@ -131,18 +127,6 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
 
-          <select
-            value={currentUser.id}
-            onChange={(e) => onSwitchUser(e.target.value)}
-            className="text-[11px] bg-slate-900/80 border border-slate-700 rounded px-2 py-1 text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-400 cursor-pointer"
-            title="Alternar perfil para teste de permissões RBAC"
-          >
-            {allUsers.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.fullName} ({getRoleLabel(u.role)})
-              </option>
-            ))}
-          </select>
 
           {onLogout && (
             <button
