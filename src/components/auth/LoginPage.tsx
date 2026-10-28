@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Lock, 
   Mail, 
@@ -19,11 +19,12 @@ import {
   Check
 } from 'lucide-react';
 import { BRAND_CONFIG } from '../../constants/brand';
-import { UserProfile } from '../../types/corban';
+import { supabase, isSupabaseConfigured, setRememberMe as persistRememberMe } from '../../lib/supabase';
+import { logAuthEvent } from '../../services/db';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
 
 interface LoginPageProps {
-  onLoginSuccess: (user: UserProfile, token: string) => void;
+  onLoginSuccess: () => void;
   initialErrorMessage?: string | null;
 }
 
@@ -31,8 +32,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   onLoginSuccess,
   initialErrorMessage
 }) => {
-  const [email, setEmail] = useState<string>('tomsilvaconsignado@gmail.com');
-  const [password, setPassword] = useState<string>('Corvexa@2026');
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   
@@ -40,61 +41,53 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(initialErrorMessage || null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [lockoutMinutes, setLockoutMinutes] = useState<number | null>(null);
-  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+  const [remainingAttempts] = useState<number | null>(null);
 
   const [isForgotModalOpen, setIsForgotModalOpen] = useState<boolean>(false);
 
-  // Quick credentials picker for authorized roles
-  const handleSelectQuickAccount = (quickEmail: string, quickPass: string) => {
-    setEmail(quickEmail);
-    setPassword(quickPass);
-    setErrorMessage(null);
-  };
+  useEffect(() => {
+    if (initialErrorMessage) setErrorMessage(initialErrorMessage);
+  }, [initialErrorMessage]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setLockoutMinutes(null);
-    setRemainingAttempts(null);
+
+    if (!isSupabaseConfigured) {
+      setErrorMessage('Supabase não configurado: defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY (veja o README).');
+      return;
+    }
 
     if (!email.trim() || !password) {
-      setErrorMessage('Por favor, preencha o e-mail / usuário e a senha.');
+      setErrorMessage('Por favor, preencha o e-mail e a senha.');
       return;
     }
 
     setIsLoading(true);
+    persistRememberMe(rememberMe);
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-          rememberMe
-        })
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password
       });
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        if (rememberMe && data.token) {
-          localStorage.setItem('corvexa_session_token', data.token);
+      if (error) {
+        if (error.status === 429) {
+          setLockoutMinutes(5);
+          setErrorMessage('Muitas tentativas de login. Aguarde alguns minutos e tente novamente.');
+        } else if (/confirm/i.test(error.message)) {
+          setErrorMessage('E-mail ainda não confirmado. Verifique sua caixa de entrada.');
         } else {
-          sessionStorage.setItem('corvexa_session_token', data.token);
+          // Mensagem genérica: não revela se o e-mail existe
+          setErrorMessage('Credenciais inválidas. Verifique seu e-mail e senha de acesso.');
         }
-        onLoginSuccess(data.user, data.token);
-      } else {
-        if (response.status === 429) {
-          setLockoutMinutes(data.lockoutMinutes || 15);
-          setErrorMessage(data.error || 'Conta temporariamente bloqueada por excesso de tentativas.');
-        } else {
-          setErrorMessage(data.error || 'Credenciais inválidas. Verifique seu e-mail e senha.');
-          if (typeof data.remainingAttempts === 'number') {
-            setRemainingAttempts(data.remainingAttempts);
-          }
-        }
+        return;
       }
+
+      await logAuthEvent('auth.login_success');
+      onLoginSuccess();
     } catch (err) {
       console.error('Login error:', err);
       setErrorMessage('Falha na comunicação com o servidor de autenticação. Tente novamente.');
@@ -379,19 +372,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 htmlFor="user-email"
                 className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider"
               >
-                E-mail ou Usuário
+                E-mail
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   id="user-email"
-                  type="text"
+                  type="email"
                   required
                   autoComplete="username"
                   autoFocus
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ex: tomsilvaconsignado@gmail.com"
+                  placeholder="seu.email@empresa.com.br"
                   className="w-full pl-10 pr-3 py-3 text-sm bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0260E8] focus:border-[#0260E8] transition-all font-mono"
                 />
               </div>
@@ -472,46 +465,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               )}
             </button>
           </form>
-
-          {/* Quick Access Account Picker for Fast Evaluation & Operators */}
-          <div className="mt-8 pt-6 border-t border-slate-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">
-                Acessos Credenciados (Demonstração & Testes)
-              </span>
-              <span className="text-[10px] text-slate-400">Clique para preencher</span>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleSelectQuickAccount('tomsilvaconsignado@gmail.com', 'Corvexa@2026')}
-                className="p-2 text-left bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-lg transition-colors group cursor-pointer"
-              >
-                <div className="text-[11px] font-bold text-slate-800 group-hover:text-blue-700 truncate">
-                  Tomás Silva
-                </div>
-                <div className="text-[9px] text-slate-500 flex items-center justify-between">
-                  <span>Operador Sênior</span>
-                  <span className="font-mono text-blue-600">tomsilva...</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSelectQuickAccount('admin@corvexa.com.br', 'Corvexa@2026')}
-                className="p-2 text-left bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-lg transition-colors group cursor-pointer"
-              >
-                <div className="text-[11px] font-bold text-slate-800 group-hover:text-blue-700 truncate">
-                  Carlos Eduardo
-                </div>
-                <div className="text-[9px] text-slate-500 flex items-center justify-between">
-                  <span>Admin Master</span>
-                  <span className="font-mono text-blue-600">admin@...</span>
-                </div>
-              </button>
-            </div>
-          </div>
 
         </div>
 
