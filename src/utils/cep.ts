@@ -44,18 +44,9 @@ export async function fetchAddressByCep(cep: string): Promise<{
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
 
-    let response: Response | null = null;
-    try {
-      response = await fetch(`/api/integrations/cep/${cleanCep}`, { signal: controller.signal });
-    } catch {
-      // Backend proxy fallback
-    }
-
-    if (!response || !response.ok) {
-      response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`, {
-        signal: controller.signal
-      });
-    }
+    const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`, {
+      signal: controller.signal
+    });
     clearTimeout(timeoutId);
 
     if (!response.ok) {
