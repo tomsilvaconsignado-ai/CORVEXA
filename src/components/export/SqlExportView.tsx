@@ -1,23 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Database, Download, Copy, Check, ShieldCheck, ExternalLink } from 'lucide-react';
+import React, { useState } from 'react';
+import { Database, Download, Copy, Check } from 'lucide-react';
+// Migration real aplicada no Supabase (embutida no build pelo Vite)
+import migrationSql from '../../../supabase/migrations/20261028120000_corvexa_app.sql?raw';
 
 export const SqlExportView: React.FC = () => {
-  const [sqlContent, setSqlContent] = useState<string>('Carregando script SQL de migração...');
+  const sqlContent: string = migrationSql;
   const [copied, setCopied] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    fetch('/api/export/sql')
-      .then(res => res.text())
-      .then(data => {
-        setSqlContent(data);
-        setIsLoading(false);
-      })
-      .catch(() => {
-        setSqlContent('-- Erro ao carregar script SQL');
-        setIsLoading(false);
-      });
-  }, []);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(sqlContent);
@@ -44,10 +32,10 @@ export const SqlExportView: React.FC = () => {
         <div>
           <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <Database className="w-4 h-4 text-emerald-600" />
-            <span>CORVEXA · Esquema Relacional SQL & Migrações Supabase (34 Entidades)</span>
+            <span>CORVEXA · Migração Supabase em uso pelo sistema</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Script DDL completo, com índices, restrições de integridade, políticas RLS e dados semente.
+            Tabelas, triggers de regras de negócio, auditoria, políticas RLS por perfil e dados iniciais. O modelo conceitual de 34 entidades está em supabase/reference/.
           </p>
         </div>
 
