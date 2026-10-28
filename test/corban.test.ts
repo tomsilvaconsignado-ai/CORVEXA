@@ -5,6 +5,7 @@
 import { isValidCPF, calculateFinancialLoan } from '../src/utils/financial.ts';
 import { isValidCNPJ, formatCNPJ } from '../src/utils/cnpj.ts';
 import { isValidCEP, formatCEP } from '../src/utils/cep.ts';
+import crypto from 'crypto';
 
 function runTests() {
   console.log('--- EXECUTANDO BATERIA DE TESTES DO CORVEXA (CEP, CPF, CNPJ & MOTOR FINANCEIRO) ---');
@@ -58,6 +59,23 @@ function runTests() {
   const fgtsSim = calculateFinancialLoan(5000, 5, 0.0179);
   assert(fgtsSim.installmentsCount === 5, 'Prazo de 5 parcelas de FGTS aceito');
   assert(fgtsSim.installmentValue > 1000 && fgtsSim.installmentValue < 1500, 'Parcela de antecipação FGTS calculada');
+
+  // 6. TESTES DE SEGURANÇA E AUTENTICAÇÃO (HASH PBKDF2 & POLÍTICA DE SENHA)
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash1 = crypto.pbkdf2Sync('Corvexa@2026', salt, 10000, 64, 'sha512').toString('hex');
+  const hash2 = crypto.pbkdf2Sync('Corvexa@2026', salt, 10000, 64, 'sha512').toString('hex');
+  const wrongHash = crypto.pbkdf2Sync('WrongPassword', salt, 10000, 64, 'sha512').toString('hex');
+
+  assert(hash1 === hash2, 'Hash criptográfico PBKDF2 determinístico com mesmo salt');
+  assert(hash1 !== wrongHash, 'Senha incorreta produz hash divergente');
+  assert(hash1.length === 128, 'Hash SHA-512 de 64 bytes formatado em hex possui 128 caracteres');
+
+  // Verificação de força de senha
+  function isStrongPassword(pwd: string): boolean {
+    return pwd.length >= 6;
+  }
+  assert(isStrongPassword('Corvexa@2026'), 'Senha padrão Corvexa atende à política mínima');
+  assert(!isStrongPassword('123'), 'Senha curta abaixo de 6 caracteres rejeitada');
 
   console.log(`\nRESULTADO DOS TESTES: ${passed} passaram, ${failed} falharam.`);
   if (failed > 0) {

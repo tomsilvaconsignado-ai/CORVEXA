@@ -20,6 +20,7 @@ import { CommissionsView } from './components/commissions/CommissionsView';
 import { ConnectorsView } from './components/connectors/ConnectorsView';
 import { AuditView } from './components/audit/AuditView';
 import { SqlExportView } from './components/export/SqlExportView';
+import { LoginPage } from './components/auth/LoginPage';
 import { BRAND_CONFIG } from './constants/brand';
 import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
@@ -29,6 +30,14 @@ export default function App() {
   const [organizationName, setOrganizationName] = useState<string>(BRAND_CONFIG.legalName);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   
+  // Real authentication session state
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return Boolean(
+      localStorage.getItem('corvexa_session_token') || 
+      sessionStorage.getItem('corvexa_session_token')
+    );
+  });
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [commissions, setCommissions] = useState<Commission[]>([]);
@@ -53,9 +62,12 @@ export default function App() {
   // Load all initial data from full-stack backend
   const refreshData = async () => {
     setIsLoading(true);
+    const token = localStorage.getItem('corvexa_session_token') || sessionStorage.getItem('corvexa_session_token');
+    const authHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+
     try {
       const [sessionRes, custRes, propRes, commRes, connRes, auditRes] = await Promise.all([
-        fetch('/api/session'),
+        fetch('/api/auth/me', { headers: authHeaders }),
         fetch('/api/customers'),
         fetch('/api/proposals'),
         fetch('/api/commissions'),
@@ -65,10 +77,35 @@ export default function App() {
 
       if (sessionRes.ok) {
         const sessionData = await sessionRes.json();
-        setCurrentUser(sessionData.user);
-        setOrganizationName(sessionData.organization.name);
-        setAllUsers(sessionData.allUsers);
+        if (sessionData.authenticated && sessionData.user) {
+          setCurrentUser(sessionData.user);
+          setIsAuthenticated(true);
+          if (sessionData.organization?.name) {
+            setOrganizationName(sessionData.organization.name);
+          }
+        } else if (!token) {
+          // If no token stored and auth/me didn't validate, prompt login
+          setIsAuthenticated(false);
+          setCurrentUser(null);
+        }
+      } else if (sessionRes.status === 401) {
+        localStorage.removeItem('corvexa_session_token');
+        sessionStorage.removeItem('corvexa_session_token');
+        setIsAuthenticated(false);
+        setCurrentUser(null);
       }
+
+      // Also get allUsers for the RBAC profile switcher
+      try {
+        const allUsersRes = await fetch('/api/session');
+        if (allUsersRes.ok) {
+          const allData = await allUsersRes.json();
+          setAllUsers(allData.allUsers || []);
+        }
+      } catch {
+        // non-blocking
+      }
+
       if (custRes.ok) setCustomers(await custRes.json());
       if (propRes.ok) setProposals(await propRes.json());
       if (commRes.ok) setCommissions(await commRes.json());
@@ -85,6 +122,34 @@ export default function App() {
   useEffect(() => {
     refreshData();
   }, []);
+
+  const handleLoginSuccess = (user: UserProfile, token: string) => {
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+    showToast(`Autenticado com sucesso. Bem-vindo(a), ${user.fullName}!`);
+    refreshData();
+  };
+
+  const handleLogout = async () => {
+    const token = localStorage.getItem('corvexa_session_token') || sessionStorage.getItem('corvexa_session_token');
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ token })
+      });
+    } catch {
+      // offline logout fallback
+    }
+    localStorage.removeItem('corvexa_session_token');
+    sessionStorage.removeItem('corvexa_session_token');
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    showToast('Sessão encerrada com sucesso.');
+  };
 
   // Handlers
   const handleSwitchUser = async (userId: string) => {
@@ -270,7 +335,7 @@ export default function App() {
     setActiveTab('documents');
   };
 
-  if (!currentUser) {
+  if (isLoading && isAuthenticated && !currentUser) {
     return (
       <div className="min-h-screen bg-[#051026] flex items-center justify-center p-4">
         <div className="text-center space-y-4 max-w-xs w-full">
@@ -281,13 +346,38 @@ export default function App() {
               className="h-14 w-auto object-contain"
             />
             <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mt-2" />
-            <p className="text-xs font-semibold text-slate-700">Iniciando plataforma...</p>
+            <p className="text-xs font-semibold text-slate-700">Verificando credenciais...</p>
           </div>
           <p className="text-xs text-slate-400 italic">
             "{BRAND_CONFIG.slogan}"
           </p>
         </div>
       </div>
+    );
+  }
+
+  // Unauthenticated: Render official CORVEXA LoginPage
+  if (!isAuthenticated || !currentUser) {
+    return (
+      <>
+        <LoginPage onLoginSuccess={handleLoginSuccess} />
+        {toastMessage && (
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-lg shadow-lg text-xs font-semibold text-white animate-fade-in bg-slate-900 border border-slate-800">
+            {toastMessage.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span>{toastMessage.text}</span>
+            <button
+              onClick={() => setToastMessage(null)}
+              className="ml-2 text-slate-400 hover:text-white"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -303,6 +393,7 @@ export default function App() {
         userRole={currentUser.role}
         isCollapsed={isCollapsed}
         onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Area */}
@@ -315,6 +406,7 @@ export default function App() {
           onSwitchUser={handleSwitchUser}
           onRefreshData={refreshData}
           isLoading={isLoading}
+          onLogout={handleLogout}
           onToggleMobileMenu={() => setIsCollapsed(!isCollapsed)}
           onGlobalSearch={(query) => {
             setGlobalSearchTerm(query);

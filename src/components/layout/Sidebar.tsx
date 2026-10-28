@@ -16,7 +16,8 @@ import {
   Briefcase,
   FileSpreadsheet,
   Layers,
-  ChevronLeft
+  ChevronLeft,
+  LogOut
 } from 'lucide-react';
 import { UserRole } from '../../types/corban';
 import { BRAND_CONFIG } from '../../constants/brand';
@@ -27,6 +28,7 @@ interface SidebarProps {
   userRole: UserRole;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  onLogout?: () => void;
 }
 
 interface NavCategory {
@@ -46,7 +48,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab, 
   userRole,
   isCollapsed,
-  onToggleCollapse
+  onToggleCollapse,
+  onLogout
 }) => {
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
     'operacional': true,
@@ -270,7 +273,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Support / Help Action (matching the orange button from reference screenshot) */}
+      {/* Support / Help Action & Logout */}
       {!isCollapsed ? (
         <div className="p-3 border-t border-slate-800/80 bg-[#030917] space-y-2">
           <a
@@ -282,13 +285,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Headphones className="w-3.5 h-3.5" />
             <span>Falar com o Suporte</span>
           </a>
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="w-full flex items-center justify-center gap-2 py-1.5 px-3 bg-slate-900 hover:bg-red-950/60 border border-slate-800 hover:border-red-900 text-slate-400 hover:text-red-300 font-semibold text-xs rounded-lg transition-colors cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Encerrar Sessão</span>
+            </button>
+          )}
+
           <p className="text-[10px] text-center text-slate-500 font-mono">
             {BRAND_CONFIG.name} v{BRAND_CONFIG.version}
           </p>
         </div>
       ) : (
-        <div className="p-2 border-t border-slate-800 text-center">
+        <div className="p-2 border-t border-slate-800 text-center space-y-2">
           <Headphones className="w-4 h-4 text-orange-400 mx-auto" />
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              title="Encerrar Sessão"
+              className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded mx-auto block cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
         </div>
       )}
     </aside>

@@ -9,7 +9,8 @@ import {
   ShieldCheck, 
   Menu,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  LogOut
 } from 'lucide-react';
 import { BRAND_CONFIG } from '../../constants/brand';
 
@@ -23,6 +24,7 @@ interface HeaderProps {
   isLoading: boolean;
   onToggleMobileMenu?: () => void;
   onGlobalSearch?: (query: string) => void;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -34,7 +36,8 @@ export const Header: React.FC<HeaderProps> = ({
   onRefreshData,
   isLoading,
   onToggleMobileMenu,
-  onGlobalSearch
+  onGlobalSearch,
+  onLogout
 }) => {
   const getTabTitle = (tab: string) => {
     switch (tab) {
@@ -140,6 +143,17 @@ export const Header: React.FC<HeaderProps> = ({
               </option>
             ))}
           </select>
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-1 text-[11px] font-semibold"
+              title="Encerrar sessão e sair do sistema"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sair</span>
+            </button>
+          )}
         </div>
       </div>
     </header>
