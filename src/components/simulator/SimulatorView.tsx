@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Customer, ProductCode, SimulationResult, PartnerCondition } from '../../types/corban';
 import { PRODUCTS_CONFIG } from '../../constants/stages';
 import { formatBRL, formatPercent } from '../../utils/formatters';
+import { simulateLoan } from '../../utils/simulation';
+import { calculateFinancialLoan } from '../../utils/financial';
 import { 
   Calculator, 
   ArrowRight, 
@@ -58,29 +60,15 @@ export const SimulatorView: React.FC<SimulatorViewProps> = ({
   }, [selectedCustomerForSim]);
 
   // Run calculation
-  const runCalculation = async () => {
+  const runCalculation = () => {
     setIsCalculating(true);
     try {
-      const res = await fetch('/api/simulations/calculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productCode,
-          requestedAmount,
-          installmentsCount
-        })
-      });
-
-      if (res.ok) {
-        const data: SimulationResult = await res.json();
-        setSimulation(data);
-        if (data.conditions && data.conditions.length > 0) {
-          const rec = data.conditions.find(c => c.isRecommended) || data.conditions[0];
-          setSelectedBank(rec);
-        }
+      const data: SimulationResult = simulateLoan(productCode, requestedAmount, installmentsCount);
+      setSimulation(data);
+      if (data.conditions && data.conditions.length > 0) {
+        const rec = data.conditions.find(c => c.isRecommended) || data.conditions[0];
+        setSelectedBank(rec);
       }
-    } catch {
-      // fallback
     } finally {
       setIsCalculating(false);
     }
@@ -97,6 +85,8 @@ export const SimulatorView: React.FC<SimulatorViewProps> = ({
     if (!activeCustomer || !simulation || !selectedBank) return;
 
     setIsSubmittingProposal(true);
+    // CET recalculado com a taxa do banco escolhido (não a taxa base do produto)
+    const bankCalc = calculateFinancialLoan(simulation.requestedAmount, simulation.installmentsCount, selectedBank.monthlyRate);
     await onCreateProposalFromSim({
       customerId: activeCustomer.id,
       productCode,
@@ -108,7 +98,7 @@ export const SimulatorView: React.FC<SimulatorViewProps> = ({
       installmentValue: selectedBank.installmentValue,
       installmentsCount: simulation.installmentsCount,
       monthlyInterestRate: selectedBank.monthlyRate,
-      cetAnnual: simulation.cetAnnual
+      cetAnnual: bankCalc.cetAnnual
     });
     setIsSubmittingProposal(false);
   };
@@ -119,7 +109,7 @@ export const SimulatorView: React.FC<SimulatorViewProps> = ({
       <div className="bg-blue-50 border border-blue-200 p-3.5 rounded-xl flex items-start gap-3 text-xs text-blue-900">
         <ShieldCheck className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
         <p className="leading-relaxed">
-          <strong>Motor de Cálculo Financeiro Homologado:</strong> Simulação baseada na Tabela Price com alíquotas reais de IOF e Custo Efetivo Total (CET). As condições indicativas respeitam o teto regulado de juros de cada convênio e distinguem claramente propostas indicativas de aprovações formais de crédito.
+          <strong>Simulação indicativa:</strong> Tabela Price com IOF pessoa física (0,38% + 0,0082% ao dia, até 365 dias) e CET calculado pelo fluxo de parcelas. As taxas por banco são referências internas — confirme a tabela vigente do parceiro e o teto do convênio antes de apresentar ao cliente. Não constitui aprovação de crédito.
         </p>
       </div>
 
